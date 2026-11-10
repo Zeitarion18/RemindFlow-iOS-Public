@@ -12,7 +12,6 @@ struct ReminderEditor: View {
     @State private var title: String
     @State private var details: String
     @State private var eventDate: Date
-    @State private var alertDate: Date
     @State private var repeatMinutes: Int
     @State private var silent: Bool
     @State private var alertMode: ReminderAlertMode
@@ -32,7 +31,6 @@ struct ReminderEditor: View {
         _title = State(initialValue: existing?.title ?? "")
         _details = State(initialValue: existing?.details ?? "")
         _eventDate = State(initialValue: existing?.eventDate ?? now.addingTimeInterval(3600))
-        _alertDate = State(initialValue: existing?.nextAlertDate ?? now.addingTimeInterval(3300))
         _repeatMinutes = State(initialValue: existing?.effectiveUnifiedIntervalMinutes ?? 5)
         _silent = State(initialValue: existing?.silent ?? UserDefaults.standard.bool(forKey: "rf.defaultSilent"))
         _alertMode = State(initialValue: existing?.effectiveAlertMode ?? .notification)
@@ -43,9 +41,9 @@ struct ReminderEditor: View {
         ))
         _autoRepeatCount = State(initialValue: existing.map {
             $0.usesAutoRepeats ? $0.effectiveAutoRepeatCount : 0
-        } ?? 10)
+        } ?? 0)
         _advanceNoticeMinutes = State(initialValue: Set(
-            existing?.effectiveAdvanceNoticeMinutes ?? ReminderOptions.defaultAdvanceNotices
+            existing?.effectiveAdvanceNoticeMinutes ?? []
         ))
     }
 
@@ -85,27 +83,18 @@ struct ReminderEditor: View {
                     Text("Категория и важность")
                 }
                 Section {
-                    DatePicker("Когда событие", selection: $eventDate,
+                    DatePicker("Событие", selection: $eventDate,
                                displayedComponents: [.date, .hourAndMinute])
                     Text("Событие: \(RFDateFormat.display(eventDate))")
                         .font(.caption)
                         .foregroundStyle(RFTheme.accent)
-                    DatePicker("Первое уведомление", selection: $alertDate,
-                               displayedComponents: [.date, .hourAndMinute])
-                    Text("Уведомление: \(RFDateFormat.display(alertDate))")
-                        .font(.caption)
-                        .foregroundStyle(RFTheme.accent)
-                    Label("В момент события — всегда оповещать", systemImage: "bell.badge.fill")
+                    Label("Уведомление придёт в момент события", systemImage: "bell.badge.fill")
                         .font(.subheadline)
                         .foregroundStyle(RFTheme.accent)
-                    if alertDate > eventDate {
-                        Label("Дополнительное уведомление будет позже события", systemImage: "exclamationmark.triangle")
-                            .font(.caption).foregroundStyle(.orange)
-                    }
                 } header: {
                     Text("Дата и время")
                 } footer: {
-                    Text("RemindFlow обязательно оповестит в момент события. Дополнительное уведомление можно назначить заранее или позднее.")
+                    Text("Выбери только дату и время события. Предупреждения заранее и повторы можно включить ниже.")
                 }
                 Section {
                     ForEach(ReminderOptions.advanceNoticeOptions, id: \.self) { minutes in
@@ -132,7 +121,7 @@ struct ReminderEditor: View {
                 } header: {
                     Text("Предварительные этапы")
                 } footer: {
-                    Text("Каждый выбранный этап — отдельное разовое оповещение. Прошедшие даты не планируются. Повторы относятся только к первому уведомлению, а событие всегда оповещается отдельно.")
+                    Text("По умолчанию предварительных этапов нет. Каждый включённый этап придёт отдельно до события; автоповторы начинаются после события.")
                 }
                 Section {
                     Picker("Повтор события", selection: $recurrence) {
@@ -208,7 +197,7 @@ struct ReminderEditor: View {
                             Text("\(count) \(count == 1 ? "раз" : count < 5 ? "раза" : "раз")").tag(count)
                         }
                     }
-                    Text("Одно расписание: если проигнорировать уведомление, оно повторится автоматически. Если нажать «Отложить», следующая дата сдвинется на выбранный интервал, но лимит повторов не обнулится.")
+                    Text("Основное уведомление придёт в момент события. Если включить автоповторы, они начнутся через выбранный интервал после события. «Отложить» создаст следующий сигнал, не сбрасывая лимит.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     if alertMode == .notification { Toggle(isOn: $silent) {
@@ -219,7 +208,7 @@ struct ReminderEditor: View {
                 } header: {
                     Text("Поведение уведомления")
                 } footer: {
-                    Text("Кнопка «Отложить на \(ReminderOptions.intervalLabel(repeatMinutes))» работает на iPhone и Apple Watch. Уведомление в момент события остаётся отдельным. Количество повторов ограничено iOS.")
+                    Text("«Отложить на \(ReminderOptions.intervalLabel(repeatMinutes))» работает на iPhone и Apple Watch. Без автоповторов придёт только сигнал события и выбранные предупреждения заранее.")
                 }
             }
             .sheet(isPresented: $showCategoryManager) {
@@ -257,8 +246,8 @@ struct ReminderEditor: View {
     private var recurrencePreview: Date? {
         guard recurrence != .none else { return nil }
         var probe = Reminder(title: title, details: details,
-                             eventDate: eventDate, firstAlertDate: alertDate,
-                             nextAlertDate: alertDate, snoozeMinutes: repeatMinutes,
+                             eventDate: eventDate, firstAlertDate: eventDate,
+                             nextAlertDate: eventDate, snoozeMinutes: repeatMinutes,
                              silent: silent)
         probe.recurrence = recurrence
         probe.recurrenceWeekdays = Array(selectedWeekdays)
@@ -273,40 +262,20 @@ struct ReminderEditor: View {
             errorMessage = "Выбери хотя бы один день недели."
             return
         }
-        guard recurrence != .none || alertDate.timeIntervalSinceNow > 2 else {
-            errorMessage = "Выбери время уведомления в будущем."
+        if recurrence == .none && eventDate.timeIntervalSinceNow <= 2 {
+            errorMessage = "Выбери будущее время события."
             return
         }
-        if recurrence == .none && eventDate.timeIntervalSinceNow <= 2,
-           existing == nil || abs(eventDate.timeIntervalSince(existing!.eventDate)) >= 1 {
-            errorMessage = "Время события уже прошло. Укажи будущую дату и время."
-            return
-        }
-        let lead = alertDate.timeIntervalSince(eventDate)
         var nextEvent = eventDate
         if recurrence != .none {
-            guard var first = recurrencePreview else {
-                errorMessage = "Не получилось рассчитать дату повторяющегося события."
+            guard let first = recurrencePreview else {
+                errorMessage = "Не получилось рассчитать ближайшее событие."
                 return
-            }
-            var probe = Reminder(title: normalized, details: details,
-                                 eventDate: first, firstAlertDate: first.addingTimeInterval(lead),
-                                 nextAlertDate: first.addingTimeInterval(lead),
-                                 snoozeMinutes: repeatMinutes, silent: silent)
-            probe.recurrence = recurrence
-            probe.recurrenceWeekdays = Array(selectedWeekdays)
-            probe.recurrenceAnchorDate = first
-            var tries = 0
-            while first.addingTimeInterval(lead).timeIntervalSinceNow <= 2 && tries < 100 {
-                guard let later = probe.followingEvent(after: first) else { break }
-                first = later
-                tries += 1
             }
             nextEvent = first
         }
-        let nextFirstAlert = recurrence == .none ? alertDate : nextEvent.addingTimeInterval(lead)
-        guard nextFirstAlert.timeIntervalSinceNow > 2 else {
-            errorMessage = "Первое уведомление должно быть в будущем. Измени дату или время."
+        guard nextEvent.timeIntervalSinceNow > 2 else {
+            errorMessage = "Время события должно быть в будущем."
             return
         }
         isSaving = true
@@ -316,8 +285,8 @@ struct ReminderEditor: View {
             title: normalized,
             details: details.trimmingCharacters(in: .whitespacesAndNewlines),
             eventDate: nextEvent,
-            firstAlertDate: recurrence == .none ? (existing?.firstAlertDate ?? alertDate) : nextFirstAlert,
-            nextAlertDate: nextFirstAlert,
+            firstAlertDate: nextEvent,
+            nextAlertDate: nextEvent,
             snoozeMinutes: repeatMinutes,
             silent: silent,
             completedAt: nil,
@@ -335,7 +304,7 @@ struct ReminderEditor: View {
             recurrence: recurrence,
             recurrenceWeekdays: recurrence == .weekly ? Array(selectedWeekdays).sorted() : nil,
             recurrenceAnchorDate: recurrence == .none ? nil : nextEvent,
-            recurrenceFirstLeadSeconds: recurrence == .none ? nil : lead,
+            recurrenceFirstLeadSeconds: recurrence == .none ? nil : 0,
             finishedOccurrenceCount: existing?.finishedOccurrenceCount ?? 0,
             lastOccurrenceCompletedAt: existing?.lastOccurrenceCompletedAt,
             categoryID: selectedCategoryID,
