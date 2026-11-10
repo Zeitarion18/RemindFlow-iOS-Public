@@ -1,0 +1,27 @@
+.DS_Store
+.derivedData/
+.build/
+build/
+dist/
+*.xcuserstate
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+RemindFlow.xcodeproj/
+
+# Credentials, provisioning and local-only configuration
+.env
+.env.*
+!.env.example
+*.p8
+*.p12
+*.mobileprovision
+*.provisionprofile
+*.key
+*.pem
+*.cer
+*.pfx
+*.jks
+*.keystore
+*.xcconfig.local
+**/Secrets.swift
+**/secrets.json
