@@ -49,6 +49,11 @@ jobs:
           swiftc RemindFlow/Models/Reminder.swift RemindFlow/Models/CategoryModel.swift tests/CategorySmokeTest.swift -o /tmp/remindflow-category-test
           /tmp/remindflow-category-test
 
+      - name: Smoke test event-only scheduling and legacy migration
+        run: |
+          swiftc RemindFlow/Models/Reminder.swift RemindFlow/Models/CategoryModel.swift tests/EventOnlySmokeTest.swift -o /tmp/remindflow-event-only-test
+          /tmp/remindflow-event-only-test
+
       - name: Compile for a physical iPhone (no signing)
         run: |
           set -euo pipefail
@@ -72,16 +77,16 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/dist/Payload"
           cp -R "$APP" "$GITHUB_WORKSPACE/dist/Payload/RemindFlow.app"
           cd "$GITHUB_WORKSPACE/dist"
-          /usr/bin/zip -qry RemindFlow-iOS-Preview-0.2.1-unsigned.ipa Payload
-          shasum -a 256 RemindFlow-iOS-Preview-0.2.1-unsigned.ipa > SHA256.txt
-          ls -lh RemindFlow-iOS-Preview-0.2.1-unsigned.ipa
+          /usr/bin/zip -qry RemindFlow-iOS-Preview-0.2.2-unsigned.ipa Payload
+          shasum -a 256 RemindFlow-iOS-Preview-0.2.2-unsigned.ipa > SHA256.txt
+          ls -lh RemindFlow-iOS-Preview-0.2.2-unsigned.ipa
 
       - name: Upload downloadable IPA
         uses: actions/upload-artifact@v4
         with:
-          name: RemindFlow-iOS-Preview-0.2.1-unsigned-IPA
+          name: RemindFlow-iOS-Preview-0.2.2-unsigned-IPA
           path: |
-            dist/RemindFlow-iOS-Preview-0.2.1-unsigned.ipa
+            dist/RemindFlow-iOS-Preview-0.2.2-unsigned.ipa
             dist/SHA256.txt
           retention-days: 7
           if-no-files-found: error
