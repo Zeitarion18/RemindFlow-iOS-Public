@@ -112,7 +112,7 @@ struct Reminder: Codable, Identifiable, Equatable {
     var recurrenceWeekdays: [Int]? = nil
     /// Original calendar date so monthly/yearly rules never drift across shorter months.
     var recurrenceAnchorDate: Date? = nil
-    /// Exact lead time of the original first notification for subsequent occurrences.
+    /// Legacy first-alert offset. For 0.2.2 and newer events this is zero.
     var recurrenceFirstLeadSeconds: Double? = nil
     var finishedOccurrenceCount: Int? = nil
     var lastOccurrenceCompletedAt: Date? = nil
@@ -128,6 +128,20 @@ struct Reminder: Codable, Identifiable, Equatable {
     }
     var originalFirstLeadSeconds: Double {
         recurrenceFirstLeadSeconds ?? firstAlertDate.timeIntervalSince(recurrenceAnchorDate ?? eventDate)
+    }
+
+    /// 0.2.2: the event is the single starting point for new notification chains.
+    /// Legacy persisted fields stay for old documents and explicit snoozes.
+    /// An in-flight snooze can be retained while future recurrences use event time.
+    func alignedToEvent(preserveInFlightFollowUp: Bool = false) -> Reminder {
+        var copy = self
+        copy.firstAlertDate = eventDate
+        copy.recurrenceFirstLeadSeconds = isRecurring ? 0 : nil
+        if !preserveInFlightFollowUp {
+            copy.nextAlertDate = eventDate
+            copy.seriesStartOrdinal = 0
+        }
+        return copy
     }
 
     /// Repeats are calendar-based, not fixed 24-hour seconds, preserving local wall-clock times.
@@ -291,7 +305,7 @@ struct Reminder: Codable, Identifiable, Equatable {
             guard let date = ReminderOptions.advanceDate(minutes: minutes, eventDate: eventDate,
                                                         calendar: calendar),
                   date > now.addingTimeInterval(1) else { return nil }
-            // First alert and event are already separately scheduled.
+            // Do not duplicate the main event or an explicit follow-up.
             if abs(date.timeIntervalSince(eventDate)) < 60 { return nil }
             if let nextAlertDate, abs(date.timeIntervalSince(nextAlertDate)) < 60 { return nil }
             return (minutes, date)
