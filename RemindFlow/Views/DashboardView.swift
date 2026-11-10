@@ -76,7 +76,7 @@ struct DashboardView: View {
                             }
                             .tint(RFTheme.accent)
                         }
-                        Text("RemindFlow · 0.2.1 Categories & Priorities · Без подписок")
+                        Text("RemindFlow · 0.2.2 Simplified Reminders · Без подписок")
                             .font(.caption2)
                             .foregroundStyle(RFTheme.muted.opacity(0.65))
                             .frame(maxWidth: .infinity)
@@ -97,6 +97,7 @@ struct DashboardView: View {
                 await checkPermission()
                 // Restores missing event signals for reminders created in earlier versions.
                 await store.migrateToUnifiedRepeatsIfNeeded()
+                await store.migrateToEventOnlyIfNeeded()
                 _ = await store.restoreMissingAlerts()
                 await store.updateExistingNotificationLanguageIfNeeded()
                 await store.replenishRecurringSchedules()
@@ -482,10 +483,15 @@ struct DashboardView: View {
                             .font(.caption).foregroundStyle(RFTheme.muted)
                     }
                 }
-                if let next = item.nextAlertDate {
-                    Label("Следующее: \(RFDateFormat.display(next))", systemImage: "bell")
+                if let next = item.nextAlertDate, next > Date() {
+                    Label("Следующий сигнал: \(RFDateFormat.display(next))", systemImage: "bell")
                         .font(.caption)
-                        .foregroundStyle(next < Date() ? Color.orange : RFTheme.accent)
+                        .foregroundStyle(RFTheme.accent)
+                } else if let next = item.autoRepeatPlan().first?.1 {
+                    Label("Ближайший автоповтор: \(RFDateFormat.display(next))",
+                          systemImage: "bell.badge")
+                        .font(.caption)
+                        .foregroundStyle(RFTheme.accent)
                 }
                 Label(item.effectiveAlertMode == .alarm ? "Системный будильник" : (item.silent ? "Без звука" : "Со звуком"),
                       systemImage: item.effectiveAlertMode == .alarm ? "alarm" : (item.silent ? "speaker.slash" : "speaker.wave.2"))

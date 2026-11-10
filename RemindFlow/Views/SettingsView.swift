@@ -63,7 +63,7 @@ struct SettingsView: View {
                     }
                 }
                 Section("О приложении") {
-                    LabeledContent("Версия", value: "iOS 0.2.1 · Categories & Priorities")
+                    LabeledContent("Версия", value: "iOS 0.2.2 · Simplified Reminders")
                     LabeledContent("Хранение", value: "Локально на iPhone")
                     LabeledContent("Подписка", value: "Не требуется")
                 }
@@ -124,7 +124,7 @@ struct SettingsView: View {
         let date = Date().addingTimeInterval(65)
         let reminder = Reminder(title: "Тест будильника RemindFlow",
             details: "Проверка системного экрана и повтора",
-            eventDate: date.addingTimeInterval(60),
+            eventDate: date,
             firstAlertDate: date, nextAlertDate: date,
             snoozeMinutes: 1, silent: false,
             alertMode: .alarm, notifyAtEvent: true)
@@ -139,7 +139,7 @@ struct SettingsView: View {
         let reminder = Reminder(
             title: "🔔 Проверка RemindFlow",
             details: "Проверь кнопки «Выполнено» и «Отложить на 1 мин»",
-            eventDate: now.addingTimeInterval(300),
+            eventDate: notificationDate,
             firstAlertDate: notificationDate,
             nextAlertDate: notificationDate,
             snoozeMinutes: 1,

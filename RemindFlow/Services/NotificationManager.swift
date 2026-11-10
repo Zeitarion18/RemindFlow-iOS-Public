@@ -128,7 +128,7 @@ enum NotificationManager {
         await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
     }
     static func schedule(_ reminder: Reminder, phase: ReminderAlertPhase, at date: Date) async throws {
-        let prefix = phase == .event ? "Время события!" : "Скоро событие"
+        let prefix = phase == .event ? "Время события!" : "Повтор после откладывания"
         try await schedule(reminder, identifier: requestID(for: reminder.id, phase: phase),
                            prefix: prefix, at: date)
     }

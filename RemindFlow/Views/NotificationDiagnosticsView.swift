@@ -128,7 +128,7 @@ struct NotificationDiagnosticsView: View {
                 let key = NotificationManager.requestID(for: reminder.id, phase: phase)
                 let request = requestsByID[key]
                 let exists = isAlarm ? alarms.contains(reminder.alarmID(for: phase)) : request != nil
-                let shown = phase == .event ? "Время события" : "Предварительное уведомление"
+                let shown = phase == .event ? "Время события" : "После откладывания"
                 let scheduled: Date? = request.flatMap(NotificationManager.requestNextDate)
                 let extra = scheduled.map { "Система: \(RFDateFormat.display($0))" }
                     ?? (isAlarm ? "AlarmKit" : "Отсутствует в pendingNotificationRequests")
