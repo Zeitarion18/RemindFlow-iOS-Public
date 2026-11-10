@@ -10,6 +10,7 @@ final class ReminderStore: ObservableObject {
     private let storageKey = "remindflow.reminders.v1"
     private let russianNotificationMigrationKey = "rf.localizedNotifications.ru.v014"
     private let unifiedRepeatMigrationKey = "rf.unifiedRepeat.v016"
+    private let eventOnlyMigrationKey = "rf.eventOnly.v022"
     private var recurringRefreshInProgress = false
     private init() { reloadFromDisk() }
     func reloadFromDisk() {
@@ -209,6 +210,45 @@ final class ReminderStore: ObservableObject {
         if allSucceeded {
             UserDefaults.standard.set(true, forKey: unifiedRepeatMigrationKey)
         }
+    }
+
+    /// Upgrade future 0.2.1 alerts to the event-based schedule exactly once.
+    /// Old reminder records remain decodable, and an already-started chain or
+    /// explicit snooze retains its next scheduled signal instead of being lost.
+    func migrateToEventOnlyIfNeeded() async {
+        guard !UserDefaults.standard.bool(forKey: eventOnlyMigrationKey) else { return }
+        var succeeded = true
+        let now = Date()
+        for old in activeReminders {
+            let snoozed = old.nextAlertDate.map {
+                $0 > now.addingTimeInterval(1) &&
+                abs($0.timeIntervalSince(old.firstAlertDate)) >= 60
+            } ?? false
+            // For an overdue event, keep its already-running follow-up chain.
+            let preserveInFlight = old.eventDate <= now || snoozed
+            let updated = old.alignedToEvent(preserveInFlightFollowUp: preserveInFlight)
+            guard updated != old else { continue }
+            let hasFuture = !updated.alertPlan(now: now).isEmpty ||
+                !updated.autoRepeatPlan(now: now).isEmpty ||
+                !updated.advanceNoticePlan(now: now).isEmpty
+            if !updated.isRecurring && !hasFuture {
+                // Completed/overdue old events should not be rescheduled in the past.
+                // Only normalize their metadata; preserve their event date and state.
+                if let index = reminders.firstIndex(where: { $0.id == old.id }) {
+                    reminders[index] = updated
+                    persist()
+                }
+                await cancelScheduled(old.id)
+                continue
+            }
+            do {
+                try await save(updated)
+            } catch {
+                succeeded = false
+                lastError = "Не удалось обновить событие «\(old.title)»: \(error.localizedDescription)"
+            }
+        }
+        if succeeded { UserDefaults.standard.set(true, forKey: eventOnlyMigrationKey) }
     }
 
     /// Rebuild the rolling buffer while retaining indefinite calendar event rules.
