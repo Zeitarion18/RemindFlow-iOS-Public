@@ -1,0 +1,87 @@
+name: Build RemindFlow iOS (unsigned IPA)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'RemindFlow/**'
+      - 'tests/**'
+      - 'Shared/**'
+      - 'RemindFlowAlarmWidget/**'
+      - 'project.yml'
+      - '.github/workflows/build-ios.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-ipa:
+    runs-on: macos-15-intel
+    timeout-minutes: 30
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Select Xcode 26.3 for AlarmKit
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.3.app/Contents/Developer
+          xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate --spec project.yml
+
+      - name: Smoke test event scheduling model
+        run: |
+          swiftc RemindFlow/Models/Reminder.swift RemindFlow/Models/CategoryModel.swift tests/ModelSmokeTest.swift -o /tmp/remindflow-model-test
+          /tmp/remindflow-model-test
+
+      - name: Smoke test calendar projections
+        run: |
+          swiftc RemindFlow/Models/Reminder.swift RemindFlow/Models/CategoryModel.swift RemindFlow/Models/CalendarEngine.swift tests/CalendarSmokeTest.swift -o /tmp/remindflow-calendar-test
+          /tmp/remindflow-calendar-test
+
+      - name: Smoke test categories, priorities and sorting
+        run: |
+          swiftc RemindFlow/Models/Reminder.swift RemindFlow/Models/CategoryModel.swift tests/CategorySmokeTest.swift -o /tmp/remindflow-category-test
+          /tmp/remindflow-category-test
+
+      - name: Compile for a physical iPhone (no signing)
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project RemindFlow.xcodeproj \
+            -scheme RemindFlow \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$GITHUB_WORKSPACE/.derivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            build
+
+      - name: Pack unsigned IPA for Sideloadly
+        run: |
+          set -euo pipefail
+          APP="$GITHUB_WORKSPACE/.derivedData/Build/Products/Release-iphoneos/RemindFlow.app"
+          test -d "$APP"
+          mkdir -p "$GITHUB_WORKSPACE/dist/Payload"
+          cp -R "$APP" "$GITHUB_WORKSPACE/dist/Payload/RemindFlow.app"
+          cd "$GITHUB_WORKSPACE/dist"
+          /usr/bin/zip -qry RemindFlow-iOS-Preview-0.2.1-unsigned.ipa Payload
+          shasum -a 256 RemindFlow-iOS-Preview-0.2.1-unsigned.ipa > SHA256.txt
+          ls -lh RemindFlow-iOS-Preview-0.2.1-unsigned.ipa
+
+      - name: Upload downloadable IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: RemindFlow-iOS-Preview-0.2.1-unsigned-IPA
+          path: |
+            dist/RemindFlow-iOS-Preview-0.2.1-unsigned.ipa
+            dist/SHA256.txt
+          retention-days: 7
+          if-no-files-found: error
