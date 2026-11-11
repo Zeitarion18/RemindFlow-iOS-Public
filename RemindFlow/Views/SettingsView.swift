@@ -55,6 +55,18 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+                Section("Данные и история") {
+                    NavigationLink {
+                        RFHistoryView()
+                    } label: {
+                        Label("История действий", systemImage: "clock.arrow.circlepath")
+                    }
+                    NavigationLink {
+                        RFBackupView()
+                    } label: {
+                        Label("Резервная копия", systemImage: "externaldrive.fill.badge.timemachine")
+                    }
+                }
                 Section("Диагностика") {
                     NavigationLink {
                         NotificationDiagnosticsView()
@@ -63,7 +75,7 @@ struct SettingsView: View {
                     }
                 }
                 Section("О приложении") {
-                    LabeledContent("Версия", value: "iOS 0.2.2 · Simplified Reminders")
+                    LabeledContent("Версия", value: "iOS 0.2.3 · History & Backup")
                     LabeledContent("Хранение", value: "Локально на iPhone")
                     LabeledContent("Подписка", value: "Не требуется")
                 }

@@ -63,6 +63,17 @@ final class RFCategoryStore: ObservableObject {
         persist()
     }
 
+    /// Only add categories not already present, preserving all local changes.
+    @discardableResult
+    func importMissing(_ imported: [RFCategory]) -> Int {
+        var ids = Set(categories.map(\.id))
+        let additions = imported.filter { ids.insert($0.id).inserted }
+        guard !additions.isEmpty else { return 0 }
+        categories = RFCategoryCatalog.mergedWithDefaults(categories + additions)
+        persist()
+        return additions.count
+    }
+
     private func persist() {
         guard let data = try? JSONEncoder().encode(categories) else { return }
         UserDefaults.standard.set(data, forKey: key)

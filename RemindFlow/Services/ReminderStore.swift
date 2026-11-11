@@ -294,14 +294,15 @@ final class ReminderStore: ObservableObject {
                 reminders[index].completedAt = Date()
                 reminders[index].nextAlertDate = nil
                 persist()
+                RFHistoryStore.shared.record(.repeatStopped, reminderID: id, title: old.title)
             }
             return
         }
-        do { try await save(single) }
+        do { try await save(single, historyEvent: .repeatStopped) }
         catch { lastError = "Не удалось отключить серию: \(error.localizedDescription)" }
     }
 
-    func save(_ reminder: Reminder) async throws {
+    func save(_ reminder: Reminder, historyEvent: RFHistoryKind? = nil) async throws {
         let old = reminders.first { $0.id == reminder.id }
         if reminder.effectiveAlertMode == .alarm { try await AlarmScheduler.requestPermissionIfNeeded() }
         await cancelScheduled(reminder.id)
@@ -311,6 +312,10 @@ final class ReminderStore: ObservableObject {
                 reminders[index] = reminder
             } else { reminders.insert(reminder, at: 0) }
             persist()
+            let kind = historyEvent ?? (old == nil ? .created : .edited)
+            RFHistoryStore.shared.record(kind, reminderID: reminder.id,
+                                         title: reminder.title,
+                                         detail: kind == .snoozed ? "На \(reminder.effectiveUnifiedIntervalMinutes) мин" : nil)
         } catch {
             await cancelScheduled(reminder.id)
             if let old { try? await schedule(old) }
@@ -328,13 +333,14 @@ final class ReminderStore: ObservableObject {
                 lastError = "Не удалось вычислить следующую дату повторяющейся задачи."
                 return
             }
-            do { try await save(updated) }
+            do { try await save(updated, historyEvent: .completed) }
             catch { lastError = "Не удалось завершить текущее событие: \(error.localizedDescription)" }
             return
         }
         reminders[index].completedAt = Date()
         reminders[index].nextAlertDate = nil
         persist()
+        RFHistoryStore.shared.record(.completed, reminderID: id, title: old.title)
         await cancelScheduled(id)
     }
 
@@ -348,7 +354,7 @@ final class ReminderStore: ObservableObject {
             guard occurrence >= old.eventDate.addingTimeInterval(-90) else { return }
             source = old.occurrence(on: occurrence)
         }
-        do { try await save(source.snoozed(at: Date())) }
+        do { try await save(source.snoozed(at: Date()), historyEvent: .snoozed) }
         catch { lastError = "Не удалось отложить: \(error.localizedDescription)" }
     }
 
@@ -363,6 +369,9 @@ final class ReminderStore: ObservableObject {
     }
 
     func remove(_ id: UUID) {
+        if let old = reminders.first(where: { $0.id == id }) {
+            RFHistoryStore.shared.record(.deleted, reminderID: id, title: old.title)
+        }
         schedulingNotices[id] = nil
         reminders.removeAll { $0.id == id }
         persist()
@@ -381,6 +390,33 @@ final class ReminderStore: ObservableObject {
         default: break
         }
     }
+    /// Restore only absent IDs. Existing records and their scheduled alerts are never replaced.
+    func importMissingReminders(_ incoming: [Reminder]) async -> RFReminderImportReport {
+        var known = Set(reminders.map(\.id))
+        var additions: [Reminder] = []
+        for candidate in incoming where known.insert(candidate.id).inserted {
+            additions.append(candidate)
+        }
+        guard !additions.isEmpty else {
+            return RFReminderImportReport(added: 0, skipped: incoming.count, warnings: [])
+        }
+        reminders.insert(contentsOf: additions, at: 0)
+        persist()
+        var warnings: [String] = []
+        for item in additions where !item.isCompleted {
+            let hasFuture = item.isRecurring ||
+                !item.alertPlan().isEmpty ||
+                !item.autoRepeatPlan().isEmpty ||
+                !item.advanceNoticePlan().isEmpty
+            guard hasFuture else { continue }
+            do { try await schedule(item) }
+            catch { warnings.append("«\(item.title)»: \(error.localizedDescription)") }
+        }
+        return RFReminderImportReport(added: additions.count,
+                                      skipped: incoming.count - additions.count,
+                                      warnings: warnings)
+    }
+
     var activeReminders: [Reminder] {
         reminders.filter { !$0.isCompleted }.sorted {
             min($0.nextAlertDate ?? .distantFuture, $0.eventDate) <
@@ -392,4 +428,11 @@ final class ReminderStore: ObservableObject {
             ($0.completedAt ?? .distantPast) > ($1.completedAt ?? .distantPast)
         }
     }
+}
+
+
+struct RFReminderImportReport {
+    let added: Int
+    let skipped: Int
+    let warnings: [String]
 }
