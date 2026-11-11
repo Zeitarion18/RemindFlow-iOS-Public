@@ -85,6 +85,9 @@ struct EventOnlySmokeTest {
         // limit long repeat chains to the next two occurrences.
         assert(ReminderOptions.recurringWindowSize == 3)
         assert(ReminderOptions.recurringAutoRepeatWindowSize == 2)
+        assert(ReminderOptions.shouldPlanRecurringAutoRepeats(forSlot: 0))
+        assert(ReminderOptions.shouldPlanRecurringAutoRepeats(forSlot: 1))
+        assert(!ReminderOptions.shouldPlanRecurringAutoRepeats(forSlot: 2))
 
         // Future recurrences use the event clock, not the old first-alert offset.
         var recurring = legacy

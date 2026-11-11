@@ -52,7 +52,7 @@ enum RecurringScheduler {
             // The main recurring event is permanent. Automatic repeats are
             // queued only for the nearest cycles and replenished when the app
             // reopens, rather than pre-filling all 3 months with 10 signals.
-            if slot < ReminderOptions.recurringAutoRepeatWindowSize {
+            if ReminderOptions.shouldPlanRecurringAutoRepeats(forSlot: slot) {
                 for (index, moment) in instance.autoRepeatPlan(now: now) {
                     extras.append(PlannedSignal(slot: slot, instance: instance,
                                                 kind: "auto", value: index, date: moment))
