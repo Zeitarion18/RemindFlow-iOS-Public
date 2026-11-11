@@ -28,6 +28,21 @@ struct NotificationDiagnosticsView: View {
 
     var body: some View {
         List {
+            if !store.schedulingNotices.isEmpty {
+                Section("Ограничения дополнительных сигналов") {
+                    ForEach(store.schedulingNotices.keys.sorted(by: {
+                        $0.uuidString < $1.uuidString
+                    }), id: \.self) { id in
+                        if let notice = store.schedulingNotices[id] {
+                            Label(notice, systemImage: "info.circle")
+                                .font(.subheadline)
+                                .foregroundStyle(.orange)
+                        }
+                    }
+                } footer: {
+                    Text("Обычно это касается автоповторов на далёкие даты. Основные повторяющиеся события регистрируются отдельно. Очередь пересчитывается при открытии RemindFlow.")
+                }
+            }
             Section {
                 LabeledContent("Разрешение уведомлений", value: permission)
                 LabeledContent("Баннеры iOS", value: alertSetting)

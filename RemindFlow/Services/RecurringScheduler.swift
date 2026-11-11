@@ -49,9 +49,14 @@ enum RecurringScheduler {
                 essentials.append(PlannedSignal(slot: slot, instance: instance,
                                                 kind: "advance", value: minutes, date: moment))
             }
-            for (index, moment) in instance.autoRepeatPlan(now: now) {
-                extras.append(PlannedSignal(slot: slot, instance: instance,
-                                            kind: "auto", value: index, date: moment))
+            // The main recurring event is permanent. Automatic repeats are
+            // queued only for the nearest cycles and replenished when the app
+            // reopens, rather than pre-filling all 3 months with 10 signals.
+            if slot < ReminderOptions.recurringAutoRepeatWindowSize {
+                for (index, moment) in instance.autoRepeatPlan(now: now) {
+                    extras.append(PlannedSignal(slot: slot, instance: instance,
+                                                kind: "auto", value: index, date: moment))
+                }
             }
         }
         // A separate signal for the same minute only adds confusion. Preserve
@@ -95,25 +100,28 @@ enum RecurringScheduler {
             guard slots >= ruleCount + 1 else { throw SchedulingError.tooManyPending }
             try await NotificationManager.scheduleRecurringEvents(reminder)
             slots -= ruleCount
-            var scheduled = 0
+            // iOS has a shared pending-notification budget. The indefinitely
+            // repeating main event is registered above, so use the remaining
+            // capacity for the nearest future extras across BOTH alert types.
+            // Otherwise distant "advance" alerts can crowd out imminent repeats.
+            let priority: [String: Int] = ["early": 0, "advance": 1, "auto": 2]
+            let signals = (plans.essentials.filter { $0.kind != "event" } + plans.extras)
+                .sorted {
+                    if $0.date != $1.date { return $0.date < $1.date }
+                    return (priority[$0.kind] ?? 9) < (priority[$1.kind] ?? 9)
+                }
             var omitted = 0
-            // Recurring system event is permanent and doesn't consume an extra
-            // scheduled one-off per occurrence.
-            for signal in plans.essentials where signal.kind != "event" {
+            for signal in signals {
                 if slots > 0 {
                     try await NotificationManager.scheduleRecurringSignal(signal)
                     slots -= 1
-                    scheduled += 1
-                } else { omitted += 1 }
+                } else {
+                    omitted += 1
+                }
             }
-            for signal in plans.extras {
-                if slots > 0 {
-                    try await NotificationManager.scheduleRecurringSignal(signal)
-                    slots -= 1
-                    scheduled += 1
-                } else { omitted += 1 }
-            }
-            return omitted > 0 ? "Ограничение iOS: для «\(reminder.title)» \(omitted) дополнительных сигналов пока не помещаются в расписание. Основное повторяющееся событие сохранено." : nil
+            return omitted > 0
+                ? "Для «\(reminder.title)» \(omitted) дополнительных сигналов не поместились в очередь iOS. Основное событие сохранено; при следующем открытии приложение повторно рассчитает очередь."
+                : nil
         case .alarm:
             try await AlarmScheduler.requestPermissionIfNeeded()
             // Fixed alarms for the nearest three cycles. AlarmKit uses a

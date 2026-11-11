@@ -7,6 +7,9 @@ final class ReminderStore: ObservableObject {
     static let shared = ReminderStore()
     @Published private(set) var reminders: [Reminder] = []
     @Published var lastError: String?
+    // Non-fatal capacity information belongs in diagnostics, not an "Error"
+    // modal which appears on every launch for recurring reminders.
+    @Published private(set) var schedulingNotices: [UUID: String] = [:]
     private let storageKey = "remindflow.reminders.v1"
     private let russianNotificationMigrationKey = "rf.localizedNotifications.ru.v014"
     private let unifiedRepeatMigrationKey = "rf.unifiedRepeat.v016"
@@ -29,9 +32,7 @@ final class ReminderStore: ObservableObject {
     }
     private func schedule(_ reminder: Reminder) async throws {
         if reminder.isRecurring {
-            if let warning = try await RecurringScheduler.schedule(reminder) {
-                lastError = warning
-            }
+            schedulingNotices[reminder.id] = try await RecurringScheduler.schedule(reminder)
             return
         }
         let plan = reminder.alertPlan()
@@ -65,9 +66,9 @@ final class ReminderStore: ObservableObject {
             for (index,date) in repeatPlan.prefix(availableExtras) {
                 try await NotificationManager.schedule(reminder, repeatIndex: index, at: date)
             }
-            if availableExtras < repeatPlan.count {
-                lastError = "Ограничение iOS: для «\(reminder.title)» запланированы не все автоповторы. Основное событие сохранено."
-            }
+            schedulingNotices[reminder.id] = availableExtras < repeatPlan.count
+                ? "Для «\(reminder.title)» не все автоповторы поместились в очередь iOS. Основное событие сохранено."
+                : nil
         case .alarm:
             try await AlarmScheduler.requestPermissionIfNeeded()
             for (phase,date) in plan.sorted(by: { $0.0 == .event && $1.0 != .event }) {
@@ -79,6 +80,7 @@ final class ReminderStore: ObservableObject {
             for (index,date) in repeats {
                 try await AlarmScheduler.schedule(reminder, repeatIndex: index, at: date)
             }
+            schedulingNotices[reminder.id] = nil
         }
     }
     // Diagnose actual system requests, not merely the dates stored in UserDefaults.
@@ -361,6 +363,7 @@ final class ReminderStore: ObservableObject {
     }
 
     func remove(_ id: UUID) {
+        schedulingNotices[id] = nil
         reminders.removeAll { $0.id == id }
         persist()
         NotificationManager.removeNotifications(for: id)

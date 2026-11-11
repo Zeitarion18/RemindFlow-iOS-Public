@@ -26,6 +26,9 @@ enum ReminderOptions {
     static let autoRepeatMinutes = [1, 2, 3, 5, 10, 15, 20, 30]
     static let maxAutoRepeats = 10
     static let recurringWindowSize = 3
+    // Keep a wider look-ahead for early stages, but limit automatic-repeat
+    // chains to two upcoming occurrences to avoid exhausting iOS pending slots.
+    static let recurringAutoRepeatWindowSize = 2
     /// Times before the event; short offsets use local wall-clock minutes,
     /// days use calendar-day subtraction to preserve the local time through DST.
     static let advanceNoticeOptions = [10080, 4320, 1440, 720, 180, 60, 30, 15]

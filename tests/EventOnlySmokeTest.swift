@@ -81,6 +81,11 @@ struct EventOnlySmokeTest {
             $0.0 == .early && $0.1 == inFlight.nextAlertDate
         }))
 
+        // Keep the permanent event rule for three forecast cycles, but
+        // limit long repeat chains to the next two occurrences.
+        assert(ReminderOptions.recurringWindowSize == 3)
+        assert(ReminderOptions.recurringAutoRepeatWindowSize == 2)
+
         // Future recurrences use the event clock, not the old first-alert offset.
         var recurring = legacy
         recurring.recurrence = .daily

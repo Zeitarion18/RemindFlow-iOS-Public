@@ -76,7 +76,7 @@ struct DashboardView: View {
                             }
                             .tint(RFTheme.accent)
                         }
-                        Text("RemindFlow · 0.2.2 Simplified Reminders · Без подписок")
+                        Text("RemindFlow · 0.2.2 · Build 14 · Без подписок")
                             .font(.caption2)
                             .foregroundStyle(RFTheme.muted.opacity(0.65))
                             .frame(maxWidth: .infinity)
