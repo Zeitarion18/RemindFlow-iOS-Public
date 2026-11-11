@@ -30,6 +30,12 @@ struct DashboardView: View {
                         heading
                         hero
                         summaryStrip
+                        if !store.schedulingNotices.isEmpty {
+                            Label("Не все дополнительные сигналы поместились в очередь iOS. Подробности: Настройки → Диагностика.",
+                                  systemImage: "info.circle")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                        }
                         scopeSelector
                         categorySelector
                         if !overdueReminders.isEmpty {
