@@ -212,6 +212,7 @@ struct ModelSmokeTest {
         var bill = monthly
         bill.eventDate = november
         bill.recurrenceAnchorDate = november
+        bill.recurrenceFirstLeadSeconds = 0
         bill.firstAlertDate = november
         bill.nextAlertDate = november
         bill.finishedOccurrenceCount = 0
