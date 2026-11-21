@@ -198,6 +198,95 @@ struct Reminder: Codable, Identifiable, Equatable {
             return nil
         }
     }
+    /// The most recent previous calendar occurrence, based on the original series anchor.
+    /// Enables recovery of legacy 0.2.3 records without a separate undo snapshot.
+    func previousScheduledEvent(before date: Date, calendar: Calendar = .current) -> Date? {
+        guard isRecurring else { return nil }
+        let anchor = recurrenceAnchorDate ?? eventDate
+        let template = calendar.dateComponents([.month, .day, .hour, .minute], from: anchor)
+        let hour = template.hour ?? 9
+        let minute = template.minute ?? 0
+        func candidate(year: Int, month: Int, day: Int) -> Date? {
+            let comps = DateComponents(timeZone: calendar.timeZone, year: year,
+                                       month: month, day: day, hour: hour, minute: minute)
+            guard let value = calendar.date(from: comps) else { return nil }
+            let components = calendar.dateComponents([.year, .month, .day], from: value)
+            guard components.year == year, components.month == month,
+                  components.day == day, value < date,
+                  value >= anchor.addingTimeInterval(-59) else { return nil }
+            return value
+        }
+        switch effectiveRecurrence {
+        case .none: break
+        case .daily, .weekly:
+            for offset in 1...8 {
+                guard let previous = calendar.date(byAdding: .day, value: -offset,
+                                                   to: date) else { continue }
+                guard effectiveRecurrence == .daily ||
+                      weekdaysForRecurrence.contains(calendar.component(.weekday,
+                                                                        from: previous)) else {
+                    continue
+                }
+                let c = calendar.dateComponents([.year, .month, .day], from: previous)
+                if let value = candidate(year: c.year!, month: c.month!, day: c.day!) {
+                    return value
+                }
+            }
+        case .monthly:
+            guard let base = calendar.date(from: calendar.dateComponents([.year, .month],
+                                                                         from: date)) else {
+                return nil
+            }
+            for offset in 1...240 {
+                guard let previous = calendar.date(byAdding: .month, value: -offset,
+                                                   to: base) else { continue }
+                let c = calendar.dateComponents([.year, .month], from: previous)
+                if let value = candidate(year: c.year!, month: c.month!,
+                                         day: template.day ?? 1) { return value }
+            }
+        case .yearly:
+            let y = calendar.component(.year, from: date)
+            for offset in 1...100 {
+                if let value = candidate(year: y-offset, month: template.month ?? 1,
+                                         day: template.day ?? 1) { return value }
+            }
+        }
+        return nil
+    }
+
+    /// Tapping Done twice must never complete the next future month silently.
+    func allowsCompletion(at now: Date = Date(), allowEarly: Bool = false) -> Bool {
+        guard !isCompleted else { return false }
+        guard isRecurring else { return true }
+        if let last = lastOccurrenceCompletedAt,
+           now.timeIntervalSince(last) >= 0,
+           now.timeIntervalSince(last) < 10 { return false }
+        return allowEarly || eventDate <= now.addingTimeInterval(60)
+    }
+
+    func recoverablePreviousEvent(now: Date = Date(),
+                                  calendar: Calendar = .current) -> Date? {
+        guard isRecurring, (finishedOccurrenceCount ?? 0) > 0,
+              let previous = previousScheduledEvent(before: eventDate, calendar: calendar),
+              previous > now.addingTimeInterval(2) else { return nil }
+        return previous
+    }
+
+    func restoredPreviousEvent(now: Date = Date(),
+                               calendar: Calendar = .current) -> Reminder? {
+        guard let previous = recoverablePreviousEvent(now: now, calendar: calendar) else {
+            return nil
+        }
+        var copy = self
+        copy.eventDate = previous
+        copy.firstAlertDate = previous.addingTimeInterval(originalFirstLeadSeconds)
+        copy.nextAlertDate = copy.firstAlertDate
+        copy.seriesStartOrdinal = 0
+        copy.finishedOccurrenceCount = max(0, (finishedOccurrenceCount ?? 0) - 1)
+        copy.lastOccurrenceCompletedAt = nil
+        return copy
+    }
+
     func upcomingOccurrences(now: Date = Date(), limit: Int = 3,
                              calendar: Calendar = .current) -> [Date] {
         guard isRecurring, limit > 0 else { return [] }

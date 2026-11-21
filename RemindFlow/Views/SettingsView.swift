@@ -75,7 +75,7 @@ struct SettingsView: View {
                     }
                 }
                 Section("О приложении") {
-                    LabeledContent("Версия", value: "iOS 0.2.3 · History & Backup")
+                    LabeledContent("Версия", value: "iOS 0.2.4 · Recurring Safety")
                     LabeledContent("Хранение", value: "Локально на iPhone")
                     LabeledContent("Подписка", value: "Не требуется")
                 }

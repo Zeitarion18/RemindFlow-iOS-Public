@@ -15,6 +15,7 @@ final class ReminderStore: ObservableObject {
     private let unifiedRepeatMigrationKey = "rf.unifiedRepeat.v016"
     private let eventOnlyMigrationKey = "rf.eventOnly.v022"
     private var recurringRefreshInProgress = false
+    private var completionsInProgress: Set<UUID> = []
     private init() { reloadFromDisk() }
     func reloadFromDisk() {
         guard let data = UserDefaults.standard.data(forKey: storageKey) else { return }
@@ -322,10 +323,14 @@ final class ReminderStore: ObservableObject {
             throw error
         }
     }
-    func complete(_ id: UUID, eventOccurrence: Date? = nil) async {
-        guard let index = reminders.firstIndex(where: { $0.id == id }),
-              !reminders[index].isCompleted else { return }
+    func complete(_ id: UUID, eventOccurrence: Date? = nil,
+                  allowEarlyCompletion: Bool = false) async {
+        guard !completionsInProgress.contains(id),
+              let index = reminders.firstIndex(where: { $0.id == id }) else { return }
         let old = reminders[index]
+        guard old.allowsCompletion(allowEarly: allowEarlyCompletion) else { return }
+        completionsInProgress.insert(id)
+        defer { completionsInProgress.remove(id) }
         if old.isRecurring {
             let occurrence = matchingOccurrence(for: old, observed: eventOccurrence)
             guard occurrence >= old.eventDate.addingTimeInterval(-90) else { return }
@@ -342,6 +347,17 @@ final class ReminderStore: ObservableObject {
         persist()
         RFHistoryStore.shared.record(.completed, reminderID: id, title: old.title)
         await cancelScheduled(id)
+    }
+
+    /// Correct a future occurrence accidentally skipped by a double completion.
+    func restorePreviousFutureOccurrence(_ id: UUID) async {
+        guard !completionsInProgress.contains(id),
+              let old = reminders.first(where: { $0.id == id }),
+              let corrected = old.restoredPreviousEvent() else { return }
+        completionsInProgress.insert(id)
+        defer { completionsInProgress.remove(id) }
+        do { try await save(corrected, historyEvent: .restored) }
+        catch { lastError = "Не удалось вернуть предыдущую дату: \(error.localizedDescription)" }
     }
 
     func snooze(_ id: UUID, eventOccurrence: Date? = nil) async {

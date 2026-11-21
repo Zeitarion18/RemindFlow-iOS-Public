@@ -200,6 +200,47 @@ struct ModelSmokeTest {
         assert(daily.upcomingOccurrences(now: mon, limit: 3, calendar: moscowCalendar).count == 3)
         let roundtrip = try JSONDecoder().decode(Reminder.self, from: JSONEncoder().encode(weekly))
         assert(roundtrip.recurrence == .weekly && roundtrip.recurrenceWeekdays == [2,4,6])
+        // November 20 monthly reminder accidentally marked twice should be restored to December 20.
+        let november = moscowCalendar.date(from: DateComponents(
+            year: 2026, month: 11, day: 20, hour: 19, minute: 0))!
+        let december = moscowCalendar.date(from: DateComponents(
+            year: 2026, month: 12, day: 20, hour: 19, minute: 0))!
+        let january = moscowCalendar.date(from: DateComponents(
+            year: 2027, month: 1, day: 20, hour: 19, minute: 0))!
+        let nowAfterNovember = moscowCalendar.date(from: DateComponents(
+            year: 2026, month: 11, day: 21, hour: 11, minute: 0))!
+        var bill = monthly
+        bill.eventDate = november
+        bill.recurrenceAnchorDate = november
+        bill.firstAlertDate = november
+        bill.nextAlertDate = november
+        bill.finishedOccurrenceCount = 0
+        bill.lastOccurrenceCompletedAt = nil
+        assert(bill.allowsCompletion(at: nowAfterNovember))
+        let doneOnce = bill.advancedAfterCompletion(of: november,
+            at: nowAfterNovember, calendar: moscowCalendar)!
+        assert(doneOnce.eventDate == december)
+        assert(!doneOnce.allowsCompletion(at: nowAfterNovember))
+        assert(doneOnce.allowsCompletion(at: nowAfterNovember.addingTimeInterval(11),
+                                         allowEarly: true))
+        let mistakenlyDoneTwice = doneOnce.advancedAfterCompletion(
+            of: december, at: nowAfterNovember.addingTimeInterval(20),
+            calendar: moscowCalendar)!
+        assert(mistakenlyDoneTwice.eventDate == january)
+        assert(mistakenlyDoneTwice.finishedOccurrenceCount == 2)
+        assert(mistakenlyDoneTwice.recoverablePreviousEvent(
+            now: nowAfterNovember, calendar: moscowCalendar) == december)
+        let fixed = mistakenlyDoneTwice.restoredPreviousEvent(
+            now: nowAfterNovember, calendar: moscowCalendar)!
+        assert(fixed.eventDate == december && fixed.nextAlertDate == december)
+        assert(fixed.finishedOccurrenceCount == 1)
+        assert(fixed.recurrenceAnchorDate == november)
+        assert(fixed.recoverablePreviousEvent(
+            now: nowAfterNovember, calendar: moscowCalendar) == nil)
+        let restoredJSON = try JSONDecoder().decode(Reminder.self,
+                                                     from: JSONEncoder().encode(fixed))
+        assert(restoredJSON.eventDate == december)
+        print("PASS: 0.2.4 recurring protection and legacy future occurrence recovery")
         print("PASS: 0.1.8 recurrence, weekdays, monthly/yearly gaps, migration, schedule and completion")
     }
 }

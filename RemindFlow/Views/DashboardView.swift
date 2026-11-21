@@ -8,6 +8,25 @@ private enum RFHomeScope: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+private enum RFRecurringConfirmation {
+    case early(Reminder), restore(Reminder)
+    var title: String {
+        switch self {
+        case .early: return "Выполнить досрочно?"
+        case .restore: return "Вернуть пропущенное событие?"
+        }
+    }
+    var explanation: String {
+        switch self {
+        case .early(let item):
+            return "Следующая дата «\(item.title)»: \(RFDateFormat.display(item.eventDate)). Это событие ещё не наступило. Выполнить его заранее?"
+        case .restore(let item):
+            let date = item.recoverablePreviousEvent().map(RFDateFormat.display) ?? "предыдущую дату"
+            return "Вернуть «\(item.title)» на \(date) и уменьшить счётчик выполнений на одно? Остальные напоминания не изменятся."
+        }
+    }
+}
+
 struct DashboardView: View {
     @EnvironmentObject private var store: ReminderStore
     @EnvironmentObject private var categories: RFCategoryStore
@@ -20,6 +39,7 @@ struct DashboardView: View {
     @State private var showCompleted = false
     @State private var showPermissionAlert = false
     @State private var errorText = ""
+    @State private var recurringConfirmation: RFRecurringConfirmation?
 
     var body: some View {
         NavigationStack {
@@ -82,7 +102,7 @@ struct DashboardView: View {
                             }
                             .tint(RFTheme.accent)
                         }
-                        Text("RemindFlow · 0.2.2 · Build 14 · Без подписок")
+                        Text("RemindFlow · 0.2.4 · Build 16 · Без подписок")
                             .font(.caption2)
                             .foregroundStyle(RFTheme.muted.opacity(0.65))
                             .frame(maxWidth: .infinity)
@@ -117,6 +137,28 @@ struct DashboardView: View {
                 Button("Понятно", role: .cancel) { }
             } message: {
                 Text("Открой настройки iOS → RemindFlow → Уведомления и разреши их, иначе напоминания могут не появиться.")
+            }
+            .confirmationDialog(
+                recurringConfirmation?.title ?? "Подтверждение",
+                isPresented: Binding(get: { recurringConfirmation != nil },
+                                     set: { if !$0 { recurringConfirmation = nil } }),
+                titleVisibility: .visible
+            ) {
+                if case .early(let item) = recurringConfirmation {
+                    Button("Выполнить досрочно") {
+                        recurringConfirmation = nil
+                        Task { await store.complete(item.id, allowEarlyCompletion: true) }
+                    }
+                }
+                if case .restore(let item) = recurringConfirmation {
+                    Button("Вернуть предыдущую дату") {
+                        recurringConfirmation = nil
+                        Task { await store.restorePreviousFutureOccurrence(item.id) }
+                    }
+                }
+                Button("Отмена", role: .cancel) { recurringConfirmation = nil }
+            } message: {
+                Text(recurringConfirmation?.explanation ?? "")
             }
             .alert("Ошибка", isPresented: Binding(
                 get: { store.lastError != nil },
@@ -361,7 +403,7 @@ struct DashboardView: View {
                     }
                     Spacer()
                     Button {
-                        Task { await store.complete(item.id) }
+                        completeFromDashboard(item)
                     } label: {
                         Image(systemName: "checkmark")
                             .font(.caption.weight(.bold))
@@ -442,6 +484,11 @@ struct DashboardView: View {
                                 showEditor = true
                             }
                         }
+                        if item.recoverablePreviousEvent() != nil {
+                            Button("Вернуть пропущенную дату", systemImage: "arrow.uturn.backward") {
+                                recurringConfirmation = .restore(item)
+                            }
+                        }
                         if item.isRecurring && !item.isCompleted {
                             Button("Отключить повторение", systemImage: "repeat.1") {
                                 Task { await store.stopRepeating(item.id) }
@@ -519,7 +566,7 @@ struct DashboardView: View {
                 if !item.isCompleted {
                     HStack(spacing: 9) {
                         Button {
-                            Task { await store.complete(item.id) }
+                            completeFromDashboard(item)
                         } label: {
                             Label("Выполнено", systemImage: "checkmark")
                                 .frame(maxWidth: .infinity)
@@ -535,6 +582,14 @@ struct DashboardView: View {
                     }
                 }
             }
+        }
+    }
+
+    private func completeFromDashboard(_ item: Reminder) {
+        if item.isRecurring && item.eventDate > Date().addingTimeInterval(60) {
+            recurringConfirmation = .early(item)
+        } else {
+            Task { await store.complete(item.id) }
         }
     }
 

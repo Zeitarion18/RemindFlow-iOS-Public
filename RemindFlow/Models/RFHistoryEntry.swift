@@ -1,7 +1,7 @@
 import Foundation
 
 enum RFHistoryKind: String, Codable, CaseIterable, Identifiable {
-    case created, edited, deleted, completed, snoozed, delivered, repeatStopped
+    case created, edited, deleted, completed, snoozed, delivered, repeatStopped, restored
 
     var id: String { rawValue }
 
@@ -14,6 +14,7 @@ enum RFHistoryKind: String, Codable, CaseIterable, Identifiable {
         case .snoozed: return "Отложено"
         case .delivered: return "Уведомление получено"
         case .repeatStopped: return "Повторение отключено"
+        case .restored: return "Пропущенное событие восстановлено"
         }
     }
 
@@ -26,6 +27,7 @@ enum RFHistoryKind: String, Codable, CaseIterable, Identifiable {
         case .snoozed: return "clock.arrow.circlepath"
         case .delivered: return "bell.badge.fill"
         case .repeatStopped: return "repeat.circle.fill"
+        case .restored: return "arrow.uturn.backward.circle.fill"
         }
     }
 }
