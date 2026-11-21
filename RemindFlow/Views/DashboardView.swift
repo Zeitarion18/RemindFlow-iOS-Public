@@ -21,7 +21,7 @@ private enum RFRecurringConfirmation {
         case .early(let item):
             return "Следующая дата «\(item.title)»: \(RFDateFormat.display(item.eventDate)). Это событие ещё не наступило. Выполнить его заранее?"
         case .restore(let item):
-            let date = item.recoverablePreviousEvent().map(RFDateFormat.display) ?? "предыдущую дату"
+            let date = item.recoverablePreviousEvent().map { RFDateFormat.display($0) } ?? "предыдущую дату"
             return "Вернуть «\(item.title)» на \(date) и уменьшить счётчик выполнений на одно? Остальные напоминания не изменятся."
         }
     }
